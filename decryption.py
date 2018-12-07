@@ -1,5 +1,7 @@
+from base64 import b64decode, b64encode
+
 from Crypto.Cipher import AES
-from base64 import b64decode
+
 import encryption
 
 def verifyMasterPassword(dbname, password):
@@ -21,22 +23,27 @@ def decryptDatabase(path, password):
         data = b64decode(dbFile.readline())
         tag = b64decode(dbFile.readline())
     decrypted = cipher.decrypt_and_verify(data,tag)
-    decrypted = decrypted.decode('ascii')[:-1]
+    decrypted = decrypted.decode('utf-8')
     if decrypted == '':
         return [], database_iv
     for line in decrypted.split('\n'):
-        name, url, iv, enc = line.split('|')
-        url = b64decode(url)
-        username_db = b64decode(username)
-        db.append((username, url, iv, enc))
+        parts = line.split('|')
+        username, url, iv, enc, tag = [b64decode(part).decode('utf-8') for part in parts]
+        db.append((username, url, iv, enc, tag))
     return db, database_iv
 
-def decryptAccount(entry, password):
-    _, _, iv, enc = entry
+def decryptAccount(entry, dbName, password):
+    with open(dbName, 'r') as dbFile:
+        salt1, salt2, digest, database_iv = dbFile.readline().split('|')
+
+    username, url, iv, pwd, tag = entry
     key = encryption.hash(password, salt1)[0]
     password = None
-    cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
+    cipher = AES.new(key, AES.MODE_GCM, nonce=b64decode(iv))
     key = None
-    cipher.decrypt_and_verify(enc)
-    name, url, app_pw = line.split(b'|')
-    return b64decode(app_pw).decode('ascii')
+    tag = b64decode(tag)
+    pwd = b64decode(pwd)
+
+    enc_pwd = cipher.decrypt_and_verify(pwd, tag)
+    name, url, app_pw = enc_pwd.split(b'|')
+    return b64decode(app_pw).decode('utf-8')

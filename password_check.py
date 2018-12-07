@@ -4,7 +4,7 @@ def isGoodPassword(password):
     if len(password) <= 8:
         return False
     with open('passwords.txt') as bad_passwords:
-        bad_passwords = set(line[:-1] for line in bad_passwords)
+        bad_passwords = set(_process(line[:-1]) for line in bad_passwords)
         return _process(password) not in bad_passwords
 
 def _process(password):
@@ -28,8 +28,6 @@ def generateRandomPassword(len, forbidden_char=''):
         while char in forbidden_char:
             char = secrets.choice(password_characters)
         str += (char)
-
-    #print("Random password is ", str)
     return str
 
 if __name__ == '__main__':

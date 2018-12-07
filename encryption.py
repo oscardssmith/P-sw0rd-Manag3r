@@ -1,13 +1,13 @@
+from base64 import b64encode, b64decode
 
 from Crypto.Cipher import AES
-from base64 import b64encode, b64decode
-from passlib.hash import argon2
 from Crypto.Random import get_random_bytes
+from passlib.hash import argon2
 
 def hash(str, salt=None):
-    ''' Returns (salt, digest)'''
+    ''' Returns (digest, digest)'''
     if salt is not None:
-        salt = b64decode(salt.encode('ascii')).rstrip(b'=')
+        salt = b64decode(salt.encode('utf-8')).rstrip(b'=')
         hash = argon2.using(rounds=4, salt=salt).hash(str)
     else:
         hash = argon2.using(rounds=4).hash(str)
@@ -16,8 +16,8 @@ def hash(str, salt=None):
 
 def verify_hash(str, salt1, salt2, digest):
     x = hash(hash(str, salt1)[0], salt2)
-    y = (b64decode(digest.encode('ascii')).rstrip(b'='),
-        b64decode(salt2.encode('ascii')).rstrip(b'='))
+    y = (b64decode(digest.encode('utf-8')).rstrip(b'='),
+        b64decode(salt2.encode('utf-8')).rstrip(b'='))
     return x == y
 
 def createDatabase(path, password):
@@ -27,66 +27,60 @@ def createDatabase(path, password):
     iv = get_random_bytes(16)
     cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
     key = None
-    parts = [b64encode(part).decode('ascii') for part in (salt1, salt2, digest, iv)]
+    parts = [b64encode(part).decode('utf-8') for part in (salt1, salt2, digest, iv)]
     data = '|'.join(parts) + '\n'
     with open(path, 'w') as dbFile:
         dbFile.write(data)
         data,tag = cipher.encrypt_and_digest(b'')
-        dbFile.write(b64encode(data).decode('ascii'))
+        dbFile.write(b64encode(data).decode('utf-8'))
         dbFile.write('\n')
-        dbFile.write(b64encode(tag).decode('ascii'))
+        dbFile.write(b64encode(tag).decode('utf-8'))
 
     return iv
 
-def encryptDatabase(path, db, password, database_iv):
+def encryptDatabase(path, db, key, database_iv):
     db_lines = []
     for entry in db:
-        print(entry)
-        parts = [b64encode(part.encode('ascii')) for part in entry]
+        parts = [b64encode(part.encode('utf-8')) for part in entry]
         db_lines.append(b'|'.join(parts))
     db_string = b'\n'.join(db_lines)
 
-    cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
+
+    cipher = AES.new(key, AES.MODE_GCM, nonce=b64decode(database_iv))
+    key = None
     with open(path, 'r') as dbFile:
-        salt1, salt2, digest, _ = dbFile.readLine().split('|')
-        first_line = '|'.join((salt1, salt2, digest, database_iv))+'\n'
+        salt1, salt2, digest, _ = dbFile.readline().split('|')
+        first_line = '|'.join((salt1, salt2, digest, database_iv))
 
     with open(path, 'w') as dbFile:
         dbFile.write(first_line)
-        data,tag = cipher.encrypt_and_digest(db_string)
-        dbFile.write(b64encode(data.encode('ascii')).decode('ascii'))
+        data, tag = cipher.encrypt_and_digest(db_string)
+        dbFile.write(b64encode(data).decode('utf-8'))
         dbFile.write('\n')
-        dbFile.write(b64encode(tag.encode('ascii')).decode('ascii'))
-
-# def encryptAccount(username, url, iv, key, password):
-#     username_enc = b64encode(username)
-#     url_enc = b64encode(url)
-#     # key = hash(password, salt2)[0]
-#     #password = None
-#     cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
-#     key = None
-#
-#     return cipher.encrypt_and_digest('|'.join(username, url, password))
+        dbFile.write(b64encode(tag).decode('utf-8'))
 
 def createAccount(db, dbName, username, url, pwd, masterpwd):
-    #get salt1 then get key from masterpassword
+    #get salt1 then get key from masterpassworddatadatabase_ivdatabase_ivbase_iv
     with open(dbName, 'r') as dbFile:
         salt1, salt2, digest, database_iv = dbFile.readline().split('|')
     key = hash(masterpwd, salt1)[0]
+    masterpwd = None
 
     #get random IV
     iv = get_random_bytes(16)
     #Encrypt with the new key and iv
     cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
-    username_enc = b64encode(username.encode('ascii'))
-    url_enc = b64encode(url.encode('ascii'))
-    pwd_enc = b64encode(pwd.encode('ascii'))
+    username_enc = b64encode(username.encode('utf-8'))
+    url_enc = b64encode(url.encode('utf-8'))
+    pwd_enc = b64encode(pwd.encode('utf-8'))
 
-    enc_pwd, tag = cipher.encrypt_and_digest(b'|'.join((username_enc, url_enc, pwd_enc)))
+    pwd, tag = cipher.encrypt_and_digest(b'|'.join((username_enc, url_enc, pwd_enc)))
 
     #append to existing db
-    iv = b64encode(iv).decode('ascii')
-    db.append((username, url, iv, enc_pwd, tag))
+    iv = b64encode(iv).decode('utf-8')
+    pwd = b64encode(pwd).decode('utf-8')
+    tag = b64encode(tag).decode('utf-8')
+    db.append((username, url, iv, pwd, tag))
 
     #encrypt the whole db again
-    encryptDatabase(dbName, db, masterpwd, database_iv)
+    encryptDatabase(dbName, db, key, database_iv)
